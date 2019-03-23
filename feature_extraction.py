@@ -111,9 +111,14 @@ def build_input_feature_tensor(unsw_nb15_dataset, packet_data_dict):
     proto_category_index = np.where(unsw_nb15_dataset.categorical_column_values['proto'] == packet_data_dict['proto'])[0][0]
     proto = get_one_hot(proto_category_index, len(unsw_nb15_dataset.categorical_column_values['proto']))
 
+    #state
+    state_category_index = np.where(unsw_nb15_dataset.categorical_column_values['state'] == packet_data_dict['state'])[0][0]
+    state = get_one_hot(state_category_index, len(unsw_nb15_dataset.categorical_column_values['state']))
+
+
     #TODO need to encode the rest of the features buuuuuttttt that can come later.
     
-    input_features += srcip_bits + dstip_bits + sport + dsport + proto
+    input_features += srcip_bits + dstip_bits + sport + dsport + proto + state
     
     return torch.tensor(input_features, dtype=torch.float64)
         
@@ -148,9 +153,15 @@ def decode_feature_tensor(unsw_nb15_dataset, feature_tensor):
     output_values['dsport'] = dsport
 
     #protocol
-    proto_index_one_hot = feature_tensor[96:96+len(unsw_nb15_dataset.categorical_column_values['proto'])]
-    proto = unsw_nb15_dataset.categorical_column_values['proto'][from_one_hot(proto_index_one_hot)]
+    proto_one_hot_index = feature_tensor[96:96+len(unsw_nb15_dataset.categorical_column_values['proto'])]
+    proto = unsw_nb15_dataset.categorical_column_values['proto'][from_one_hot(proto_one_hot_index)]
     output_values['proto'] = proto
+
+    #state
+    feature_tensor_state_index = 96+len(unsw_nb15_dataset.categorical_column_values['proto'])
+    state_one_hot_index = feature_tensor[feature_tensor_state_index:feature_tensor_state_index+len(unsw_nb15_dataset.categorical_column_values['state'])]
+    state = unsw_nb15_dataset.categorical_column_values['state'][from_one_hot(state_one_hot_index)]
+    output_values['state'] = state
     
     return output_values
 
