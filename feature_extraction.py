@@ -71,7 +71,7 @@ def float_to_binary(value):
     return out
 
 
-def build_input_feature_tensor(packet_data_dict):
+def build_input_feature_tensor(unsw_nb15_dataset, packet_data_dict):
     input_features = []
     
     srcip_segments = str(packet_data_dict['srcip']).split('.')
@@ -100,7 +100,7 @@ def build_input_feature_tensor(packet_data_dict):
 #Revert a feature tensor to human readable form
 #This working correctly is heavily dependent on sizes and locations chosen in 
 #build_input_feature_tensor()
-def decode_feature_tensor(feature_tensor):
+def decode_feature_tensor(unsw_nb15_dataset, feature_tensor):
     output_values = {}
     
     srcip_segments = []
@@ -125,25 +125,23 @@ def decode_feature_tensor(feature_tensor):
     
     return output_values
 
-def build_feature_sequence_tensor(packet_data_dict_list):
+def build_feature_sequence_tensor(unsw_nb15_dataset, packet_data_dict_list):
     sequence_length = len(packet_data_dict_list)
-    example_feature_vector = build_input_feature_tensor(packet_data_dict_list[0])
+    example_feature_vector = build_input_feature_tensor(unsw_nb15_dataset, packet_data_dict_list[0])
     seq_out = torch.tensor(()).new_zeros([sequence_length, 1, example_feature_vector.shape[0]])
     
     for i in range(0, sequence_length):
-        seq_out[i,0,:] = build_input_feature_tensor(packet_data_dict_list[i])
+        seq_out[i,0,:] = build_input_feature_tensor(unsw_nb15_dataset, packet_data_dict_list[i])
         
     return seq_out
 
-def decode_feature_sequence_tensor(sequence_tensor):
+def decode_feature_sequence_tensor(unsw_nb15_dataset, sequence_tensor):
     seq_out = []
 
     for i in range(0, sequence_tensor.shape[0]):
-        seq_out.append(decode_feature_tensor(sequence_tensor[i,0,:]))
+        seq_out.append(decode_feature_tensor(unsw_nb15_dataset, sequence_tensor[i,0,:]))
         
     return seq_out
-
-
 
 def test_cases():
     #check that the dataframe is loaded correctly per some pre-determined values
