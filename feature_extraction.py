@@ -5,6 +5,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 import os.path
+import unsw_nb15_dataset
 
 #Load a CSV from the UNSW-NB15 dataset into a Pandas DataFrame
 def load_unsw_nb15_dataset_as_data_frame(file_path = None, features_path = None):
@@ -70,30 +71,49 @@ def float_to_binary(value):
             
     return out
 
+def get_one_hot(target, num_classes):
+    one_hot = [0.0 for c in range(num_classes)]
+    one_hot[target] = 1.0
+    return one_hot
+
+def from_one_hot(one_hot):
+    for c in range(0, len(one_hot)):
+        if one_hot[c] == 1.0 or one_hot[c] == 1:
+            return c
+
+    return None
 
 def build_input_feature_tensor(unsw_nb15_dataset, packet_data_dict):
     input_features = []
     
+    #source ip
     srcip_segments = str(packet_data_dict['srcip']).split('.')
     srcip_bits = []
     for segment in srcip_segments:
         for k in binary_encode(int(segment), 8):
             srcip_bits.append(k)
     
+    #destination ip
     dstip_segments = str(packet_data_dict['dstip']).split('.')
     dstip_bits = []
     for segment in dstip_segments:
         for k in binary_encode(int(segment), 8):
             dstip_bits.append(k)
             
+
+    #source port        
     sport = binary_encode(int(packet_data_dict['sport']), 16)
-    dport = binary_encode(int(packet_data_dict['dsport']), 16)
+
+    #destination port
+    dsport = binary_encode(int(packet_data_dict['dsport']), 16)
     
-    
-    
+    #protocol
+    proto_category_index = np.where(unsw_nb15_dataset.categorical_column_values['proto'] == packet_data_dict['proto'])[0][0]
+    proto = get_one_hot(proto_category_index, len(unsw_nb15_dataset.categorical_column_values['proto']))
+
     #TODO need to encode the rest of the features buuuuuttttt that can come later.
     
-    input_features += srcip_bits + dstip_bits + sport + dport
+    input_features += srcip_bits + dstip_bits + sport + dsport + proto
     
     return torch.tensor(input_features, dtype=torch.float64)
         
@@ -103,25 +123,34 @@ def build_input_feature_tensor(unsw_nb15_dataset, packet_data_dict):
 def decode_feature_tensor(unsw_nb15_dataset, feature_tensor):
     output_values = {}
     
+    #source ip
     srcip_segments = []
     for i in [0,1,2,3]:
         srcip_segments.append(binary_decode(float_to_binary(feature_tensor[i*8:(i*8)+8])))
         
     srcip_string = ".".join([str(k) for k in srcip_segments])
-    
+    output_values['srcip'] = srcip_string
+
+    #dest ip
     dstip_segments = []
     for i in [4,5,6,7]:
         dstip_segments.append(binary_decode(float_to_binary(feature_tensor[i*8:(i*8)+8])))
         
     dstip_string = ".".join([str(k) for k in dstip_segments])
-    
-    sport = binary_decode(float_to_binary(feature_tensor[64:64+16]))
-    dport = binary_decode(float_to_binary(feature_tensor[64+16:64+16+16]))
-    
-    output_values['srcip'] = srcip_string
     output_values['dstip'] = dstip_string
+
+    #source port
+    sport = binary_decode(float_to_binary(feature_tensor[64:64+16]))
     output_values['sport'] = sport
-    output_values['dport'] = dport
+
+    #dest port
+    dsport = binary_decode(float_to_binary(feature_tensor[64+16:64+16+16]))
+    output_values['dsport'] = dsport
+
+    #protocol
+    proto_index_one_hot = feature_tensor[96:96+len(unsw_nb15_dataset.categorical_column_values['proto'])]
+    proto = unsw_nb15_dataset.categorical_column_values['proto'][from_one_hot(proto_index_one_hot)]
+    output_values['proto'] = proto
     
     return output_values
 
@@ -145,9 +174,31 @@ def decode_feature_sequence_tensor(unsw_nb15_dataset, sequence_tensor):
 
 def test_cases():
     #check that the dataframe is loaded correctly per some pre-determined values
-    data_path = "UNSW-NB15_1_clean.csv"
-    features_path = "UNSW-NB15_features.csv"
-    packet_df, features_df = load_unsw_nb15_dataset_as_data_frame(data_path, features_path)
-    assert (packet_df is not None), "Couldn't load packet dataset"
-    assert (features_df is not None), "Couldn't load features list"
+    #this is old, can probz get rid
+    #data_path = "UNSW-NB15_1_clean.csv"
+    #features_path = "UNSW-NB15_features.csv"
+    #packet_df, features_df = load_unsw_nb15_dataset_as_data_frame(data_path, features_path)
+    #assert (packet_df is not None), "Couldn't load packet dataset"
+    #assert (features_df is not None), "Couldn't load features list"
+
+    #test one-hot function
+    assert get_one_hot(2, 5) == [0.0, 0.0, 1.0, 0.0, 0.0]
+
+    data_set = unsw_nb15_dataset.UNSW_NB15(['/home/jaywalker/MachineLearning/PacketGAN/UNSW-NB15_1_clean.csv'],
+                                       sequence_length=1)
+
+    print("Original data item:")
+    data_item = data_set[99][0]
+    print(data_item)
+    print("Encoded and then decoded data item:")
+    encoded = build_input_feature_tensor(data_set, data_item)
+    decoded = decode_feature_tensor(data_set, encoded)
+    print(decoded)
+    for k in decoded:
+        assert data_item[k] == decoded[k],"Value prior to encoding does not match decoded value."
+
+
+
+if __name__ == "__main__":
+    test_cases()
 
