@@ -153,14 +153,16 @@ def decode_feature_tensor(unsw_nb15_dataset, feature_tensor):
     output_values['dsport'] = dsport
 
     #protocol
-    proto_one_hot_index = feature_tensor[96:96+len(unsw_nb15_dataset.categorical_column_values['proto'])]
-    proto = unsw_nb15_dataset.categorical_column_values['proto'][from_one_hot(proto_one_hot_index)]
+    proto_fuzzy_one_hot = feature_tensor[96:96+len(unsw_nb15_dataset.categorical_column_values['proto'])]
+    proto_one_hot_index = torch.argmax(proto_fuzzy_one_hot)
+    proto = unsw_nb15_dataset.categorical_column_values['proto'][proto_one_hot_index]
     output_values['proto'] = proto
 
     #state
     feature_tensor_state_index = 96+len(unsw_nb15_dataset.categorical_column_values['proto'])
-    state_one_hot_index = feature_tensor[feature_tensor_state_index:feature_tensor_state_index+len(unsw_nb15_dataset.categorical_column_values['state'])]
-    state = unsw_nb15_dataset.categorical_column_values['state'][from_one_hot(state_one_hot_index)]
+    state_fuzzy_one_hot = feature_tensor[feature_tensor_state_index:feature_tensor_state_index+len(unsw_nb15_dataset.categorical_column_values['state'])]
+    state_one_hot_index = torch.argmax(state_fuzzy_one_hot)
+    state = unsw_nb15_dataset.categorical_column_values['state'][state_one_hot_index]
     output_values['state'] = state
     
     return output_values
@@ -198,15 +200,26 @@ def test_cases():
     data_set = unsw_nb15_dataset.UNSW_NB15(['/home/jaywalker/MachineLearning/PacketGAN/UNSW-NB15_1_clean.csv'],
                                        sequence_length=1)
 
-    print("Original data item:")
+    #print("Original data item:")
     data_item = data_set[99][0]
-    print(data_item)
-    print("Encoded and then decoded data item:")
+    #print(data_item)
+    #print("Encoded and then decoded data item:")
     encoded = build_input_feature_tensor(data_set, data_item)
     decoded = decode_feature_tensor(data_set, encoded)
-    print(decoded)
+    #print(decoded)
     for k in decoded:
         assert data_item[k] == decoded[k],"Value prior to encoding does not match decoded value."
+
+    data_set = unsw_nb15_dataset.UNSW_NB15(['/home/jaywalker/MachineLearning/PacketGAN/UNSW-NB15_1_clean.csv'],
+                                       sequence_length=5)
+
+    #ensure tensor encoding and decoded is working correctly
+    data_item = data_set[0]
+    encoded_feature_sequence_tensor = build_feature_sequence_tensor(data_set, data_item)
+    decoded_feature_sequence_tensor = decode_feature_sequence_tensor(data_set, encoded_feature_sequence_tensor)
+    for t in range(0, len(decoded_feature_sequence_tensor)):
+        for k in decoded_feature_sequence_tensor[t]:
+            assert data_item[t][k] == decoded_feature_sequence_tensor[t][k],"Value prior to encoding does not match decoded value."
 
 
 

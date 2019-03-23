@@ -88,7 +88,7 @@ class UNSW_NB15(torch.utils.data.Dataset):
         
         list_of_dicts = []
         for i in range(index,index+self.sequence_length):
-            list_of_dicts.append(self.dataframe.loc[index, :].to_dict())
+            list_of_dicts.append(self.dataframe.loc[i, :].to_dict())
         
         if self.transform is not None:
             return self.transform(self, list_of_dicts)

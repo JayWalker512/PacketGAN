@@ -44,11 +44,12 @@ def extract(v):
     return v.data.storage().tolist()
 
 #well OK let's train the GAN on a single sequence and see what happens
-def train(G, D, data_loader):
+def train(G, D, data_loader, num_epochs):
     epoch_timer = benchmark_timer.BenchmarkTimer()
-    num_epochs = 25
+    num_epochs = num_epochs
     print_interval = 1
-    loss_log_interval = 1
+    loss_log_interval = 100
+    sample_count = 0 #count samples up to loss_log_interval then log instantaneous loss
     print_stats = True
     eta = 0.2 #probability of masking an element of a sequence
     
@@ -74,6 +75,10 @@ def train(G, D, data_loader):
     for epoch in range(num_epochs):
         epoch_timer.start()
         for data_sample in data_loader:
+
+            if data_sample.shape[0] != G.batch_size:
+                continue #skip these samples if the batch is the wrong size.
+
             for discriminator_step in range(discriminator_training_steps):
                 #G.init_hidden_state()
                 #G.zero_grad()
@@ -83,7 +88,7 @@ def train(G, D, data_loader):
                 #Train D on the real samples
                 #print("Sequence length: ", data_sample.shape[1] )
                 discriminator_decision_r = D(data_sample)
-                discriminator_real_error = criterion(discriminator_decision_r, torch.ones(data_sample.shape[1]))
+                discriminator_real_error = criterion(discriminator_decision_r, torch.ones(data_sample.shape[0], data_sample.shape[1], 1))
                 discriminator_real_error.backward()
                 
                 #Train D on the fake samples
@@ -92,10 +97,13 @@ def train(G, D, data_loader):
                 #get a real example and mask some of them with generator output
                 generator_input_sequence = data_sample
                 fake_data = G(generator_input_sequence).detach()  # detach to avoid training G on these labels
+                
+                #TODO FIXME, is the masker behaving properly with the batch training?
                 fake_masked_data = get_interleaved_sequence_by_mask(generator_input_sequence, fake_data, get_mask_vector(data_sample.shape[1], eta))
                 
+
                 discriminator_decision_f = D(fake_masked_data)
-                discriminator_fake_error = criterion(discriminator_decision_f, torch.zeros(data_sample.shape[1]))
+                discriminator_fake_error = criterion(discriminator_decision_f, torch.zeros(data_sample.shape[0], data_sample.shape[1], 1))
                 discriminator_fake_error.backward()
                 discriminator_optimizer.step() # Only optimizes D's parameters; changes based on stored gradients from backward()
                 
@@ -116,7 +124,7 @@ def train(G, D, data_loader):
                 fake_masked_data = get_interleaved_sequence_by_mask(generator_input_sequence, fake_data, get_mask_vector(data_sample.shape[1], eta))
                 
                 discriminator_decision_dg = D(fake_masked_data)
-                generator_error = criterion(discriminator_decision_dg, torch.ones(data_sample.shape[1])) # Train G to pretend it's genuine
+                generator_error = criterion(discriminator_decision_dg, torch.ones(data_sample.shape[0], data_sample.shape[1], 1)) # Train G to pretend it's genuine
             
                 generator_error.backward()
                 generator_optimizer.step() # Only optimizes G's parameters
@@ -124,16 +132,16 @@ def train(G, D, data_loader):
                 ge = extract(generator_error)[0]
                 
                 g_stats.log_data(ge)
+
+            sample_count += 1
+            if sample_count % loss_log_interval == 0:
+                discriminator_fake_losses.append(dfe)
+                generator_losses.append(ge)
                 
         epoch_timer.stop()    
-        if epoch % loss_log_interval == 0 or epoch == num_epochs-1:
-            #TODO FIXME move instantaneous loss logging to the correct place in the inner loop above^
-            discriminator_fake_losses.append(dfe)
-            generator_losses.append(ge)
-            
-            #can we log average loss over a period for a smoother graph? yes!
-            g_stats.log_average()
-            df_stats.log_average()
+        #calc average loss for every epoch
+        g_stats.log_average()
+        df_stats.log_average()
             
         if print_stats:
             if epoch % print_interval == 0 or epoch == num_epochs-1:
