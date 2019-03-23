@@ -168,10 +168,10 @@ def decode_feature_tensor(unsw_nb15_dataset, feature_tensor):
 def build_feature_sequence_tensor(unsw_nb15_dataset, packet_data_dict_list):
     sequence_length = len(packet_data_dict_list)
     example_feature_vector = build_input_feature_tensor(unsw_nb15_dataset, packet_data_dict_list[0])
-    seq_out = torch.tensor(()).new_zeros([sequence_length, 1, example_feature_vector.shape[0]])
+    seq_out = torch.tensor(()).new_zeros([sequence_length, example_feature_vector.shape[0]])
     
     for i in range(0, sequence_length):
-        seq_out[i,0,:] = build_input_feature_tensor(unsw_nb15_dataset, packet_data_dict_list[i])
+        seq_out[i,:] = build_input_feature_tensor(unsw_nb15_dataset, packet_data_dict_list[i])
         
     return seq_out
 
@@ -179,7 +179,7 @@ def decode_feature_sequence_tensor(unsw_nb15_dataset, sequence_tensor):
     seq_out = []
 
     for i in range(0, sequence_tensor.shape[0]):
-        seq_out.append(decode_feature_tensor(unsw_nb15_dataset, sequence_tensor[i,0,:]))
+        seq_out.append(decode_feature_tensor(unsw_nb15_dataset, sequence_tensor[i,:]))
         
     return seq_out
 
