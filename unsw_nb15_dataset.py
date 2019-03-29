@@ -5,7 +5,7 @@ import torch.utils.data
 import pandas as pd
 
 class UNSW_NB15(torch.utils.data.Dataset):
-    def __init__(self, file_paths = [], sequence_length=25, transform=None):
+    def __init__(self, file_path, sequence_length=25, transform=None):
         #TODO have a sequence_overlap=True flag? Does overlap matter?
         self.transform = transform
         self.sequence_length = sequence_length
@@ -53,29 +53,37 @@ class UNSW_NB15(torch.utils.data.Dataset):
                                 "tcprtt": "float64",
                                 "synack": "float64",
                                 "ackdat": "float64",
-                                "is_sm_ips_ports": "int32",
-                                "ct_state_ttl": "int32",
-                                "ct_flw_httpd_mthd": "int32",
-                                "is_ftp_login": "int32",
-                                "is_ftp_cmd": "int32",
-                                "ct_ftp_cmd": "int32",
-                                "ct_srv_src": "int32",
-                                "ct_dst_ltm": "int32", 
-                                "ct_src_ltm": "int32",
-                                "ct_src_dport_ltm": "int32",
-                                "ct_dst_sport_ltm": "int32",
-                                "ct_dst_src_ltm": "int32",
+
+                                #commenting these because they have mixed values and we aren't going to generate them anyway
+                                #"is_sm_ips_ports": "int32",
+                                #"ct_state_ttl": "int32",
+                                #"ct_flw_httpd_mthd": "int32",
+                                #"is_ftp_login": "int32",
+                                #"is_ftp_cmd": "int32",
+                                #"ct_ftp_cmd": "int32",
+                                #"ct_srv_src": "int32",
+                                ##"ct_dst_ltm": "int32", 
+                                #"ct_src_ltm": "int32",
+                                #"ct_src_dport_ltm": "int32",
+                                #"ct_dst_sport_ltm": "int32",
+                                #"ct_dst_src_ltm": "int32",
                                 "attack_cat": "str",
                                 "label": "int32"}
         self.categorical_column_values = {"proto":None, "state":None, "service":None, "attack_cat":None}
 
-        self.dataframe = pd.read_csv(file_paths[0], encoding="latin-1", names=self.columns, header=None, dtype=self.dtypes)
+        self.dataframe = pd.read_csv(file_path, encoding="latin-1", names=self.columns, header=None, dtype=self.dtypes)
         self.dataframe.sort_values(by=['stime']) #sort chronologically upon loading
         
-        #TODO load all the unique values of categorical features at the start
+        #load all the unique values of categorical features at the start
         #and make these accessible via a fast function call.
         for key in self.categorical_column_values:
             self.categorical_column_values[key] = self.dataframe[key].unique()
+
+        #cache all the maximum values in numeric columns since we'll be using these for feature extraction
+        self.maximums = {}
+        for key in self.dtypes:
+            if "int" in self.dtypes[key] or "float" in self.dtypes[key]:
+                self.maximums[key] = max(self.dataframe[key])
 
 
     def __len__(self):

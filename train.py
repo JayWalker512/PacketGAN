@@ -30,6 +30,8 @@ def get_mask_vector(length = None, eta = 0.2):
 #element Yi of the second_sequence if the entry Ki of mask is equal to 0.
 #The resulting vector X is returned.
 def get_interleaved_sequence_by_mask(first_sequence, second_sequence, mask):
+    #TODO FIXME this does not work correctly with a batch dimension, only masks the first batch and not the others.
+
     assert (first_sequence.shape == second_sequence.shape),"Sequences must have the same shape."
     assert (first_sequence.shape[1] == len(mask)),"Sequences and mask must have the same 1st dimension."
     masked_sequence = first_sequence.copy_(first_sequence)
@@ -155,4 +157,13 @@ def train(G, D, data_loader, num_epochs):
                 remaining_seconds = seconds_per_epoch * (num_epochs - epoch)
                 print("Remaining time: " + epoch_timer.seconds_to_readable_time(remaining_seconds))
             
-    return G, generator_losses, discriminator_fake_losses, g_stats, df_stats
+    return G, D, generator_losses, discriminator_fake_losses, g_stats, df_stats
+
+def test_cases():
+    ones_batch = torch.ones(4, 5, 3)
+    zeros_batch = torch.zeros(4,5,3)
+    print(get_interleaved_sequence_by_mask(ones_batch, zeros_batch, get_mask_vector(ones_batch.shape[1], 0.5)))
+
+
+if __name__ == "__main__":
+    test_cases()

@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os.path
 import unsw_nb15_dataset
+import math
 
 #Load a CSV from the UNSW-NB15 dataset into a Pandas DataFrame
 def load_unsw_nb15_dataset_as_data_frame(file_path = None, features_path = None):
@@ -83,6 +84,17 @@ def from_one_hot(one_hot):
 
     return None
 
+
+#TODO FIXME is this only defined in the scope of the file? Not clear!
+one_hot_categorical = True
+
+#TODO FIXME I should get this list from the unsw_nb15_dataset object in a reliably-ordered way
+numeric_features = ['dur', 'sbytes',
+       'dbytes', 'sttl', 'dttl', 'sloss', 'dloss', 'sload', 'dload',
+       'spkts', 'dpkts', 'swin', 'dwin', 'stcpb', 'dtcpb', 'smeansz',
+       'dmeansz', 'trans_depth', 'res_bdy_len', 'sjit', 'djit', 'stime',
+       'ltime', 'sintpkt', 'dintpkt', 'tcprtt', 'synack', 'ackdat']
+
 def build_input_feature_tensor(unsw_nb15_dataset, packet_data_dict):
     input_features = []
     
@@ -107,21 +119,38 @@ def build_input_feature_tensor(unsw_nb15_dataset, packet_data_dict):
     #destination port
     dsport = binary_encode(int(packet_data_dict['dsport']), 16)
     
-    #protocol
-    proto_category_index = np.where(unsw_nb15_dataset.categorical_column_values['proto'] == packet_data_dict['proto'])[0][0]
-    proto = get_one_hot(proto_category_index, len(unsw_nb15_dataset.categorical_column_values['proto']))
+    if one_hot_categorical == True:
+        #protocol
+        proto_category_index = np.where(unsw_nb15_dataset.categorical_column_values['proto'] == packet_data_dict['proto'])[0][0]
+        proto = get_one_hot(proto_category_index, len(unsw_nb15_dataset.categorical_column_values['proto']))
 
-    #state
-    state_category_index = np.where(unsw_nb15_dataset.categorical_column_values['state'] == packet_data_dict['state'])[0][0]
-    state = get_one_hot(state_category_index, len(unsw_nb15_dataset.categorical_column_values['state']))
+        #state
+        state_category_index = np.where(unsw_nb15_dataset.categorical_column_values['state'] == packet_data_dict['state'])[0][0]
+        state = get_one_hot(state_category_index, len(unsw_nb15_dataset.categorical_column_values['state']))
+    #else:
+        #TODO binary encode these categorical values
+        #protocol
+    #    proto_category_index = np.where(unsw_nb15_dataset.categorical_column_values['proto'] == packet_data_dict['proto'])[0][0]
+    #    proto = get_one_hot(proto_category_index, len(unsw_nb15_dataset.categorical_column_values['proto']))
+
+        #state
+    #    state_category_index = np.where(unsw_nb15_dataset.categorical_column_values['state'] == packet_data_dict['state'])[0][0]
+    #    state = get_one_hot(state_category_index, len(unsw_nb15_dataset.categorical_column_values['state']))
 
 
-    #TODO need to encode the rest of the features buuuuuttttt that can come later.
+    #TODO FIXME encode 'service'
+
+    numeric_features_encoded = []
+
+    for nf in numeric_features:
+        numeric_features_encoded.append(packet_data_dict[nf] / unsw_nb15_dataset.maximums[nf])
+
     
-    input_features += srcip_bits + dstip_bits + sport + dsport + proto + state
+    input_features += srcip_bits + dstip_bits + sport + dsport + proto + state + numeric_features_encoded
     
     return torch.tensor(input_features, dtype=torch.float64)
-        
+
+
 #Revert a feature tensor to human readable form
 #This working correctly is heavily dependent on sizes and locations chosen in 
 #build_input_feature_tensor()
@@ -152,18 +181,44 @@ def decode_feature_tensor(unsw_nb15_dataset, feature_tensor):
     dsport = binary_decode(float_to_binary(feature_tensor[64+16:64+16+16]))
     output_values['dsport'] = dsport
 
-    #protocol
-    proto_fuzzy_one_hot = feature_tensor[96:96+len(unsw_nb15_dataset.categorical_column_values['proto'])]
-    proto_one_hot_index = torch.argmax(proto_fuzzy_one_hot)
-    proto = unsw_nb15_dataset.categorical_column_values['proto'][proto_one_hot_index]
-    output_values['proto'] = proto
+    if one_hot_categorical == True:
+        #protocol
+        proto_fuzzy_one_hot = feature_tensor[96:96+len(unsw_nb15_dataset.categorical_column_values['proto'])]
+        proto_one_hot_index = torch.argmax(proto_fuzzy_one_hot)
+        proto = unsw_nb15_dataset.categorical_column_values['proto'][proto_one_hot_index]
+        output_values['proto'] = proto
 
-    #state
-    feature_tensor_state_index = 96+len(unsw_nb15_dataset.categorical_column_values['proto'])
-    state_fuzzy_one_hot = feature_tensor[feature_tensor_state_index:feature_tensor_state_index+len(unsw_nb15_dataset.categorical_column_values['state'])]
-    state_one_hot_index = torch.argmax(state_fuzzy_one_hot)
-    state = unsw_nb15_dataset.categorical_column_values['state'][state_one_hot_index]
-    output_values['state'] = state
+        #state
+        feature_tensor_state_index = 96+len(unsw_nb15_dataset.categorical_column_values['proto'])
+        state_fuzzy_one_hot = feature_tensor[feature_tensor_state_index:feature_tensor_state_index+len(unsw_nb15_dataset.categorical_column_values['state'])]
+        state_one_hot_index = torch.argmax(state_fuzzy_one_hot)
+        state = unsw_nb15_dataset.categorical_column_values['state'][state_one_hot_index]
+        output_values['state'] = state
+    #else: 
+        #TODO binary decode these values
+        #protocol
+    #    proto_fuzzy_one_hot = feature_tensor[96:96+len(unsw_nb15_dataset.categorical_column_values['proto'])]
+    #    proto_one_hot_index = torch.argmax(proto_fuzzy_one_hot)
+    #    proto = unsw_nb15_dataset.categorical_column_values['proto'][proto_one_hot_index]
+    #    output_values['proto'] = proto
+
+        #state
+    #    feature_tensor_state_index = 96+len(unsw_nb15_dataset.categorical_column_values['proto'])
+    #    state_fuzzy_one_hot = feature_tensor[feature_tensor_state_index:feature_tensor_state_index+len(unsw_nb15_dataset.categorical_column_values['state'])]
+    #    state_one_hot_index = torch.argmax(state_fuzzy_one_hot)
+    #    state = unsw_nb15_dataset.categorical_column_values['state'][state_one_hot_index]
+    #    output_values['state'] = state
+
+
+    #decode numeric features:
+    numerical_features_index_start = feature_tensor_state_index + len(unsw_nb15_dataset.categorical_column_values['state'])
+    current_numeric_index = numerical_features_index_start
+    for nf in numeric_features:
+        output_values[nf] = feature_tensor[current_numeric_index].item() * unsw_nb15_dataset.maximums[nf]
+        if "int" in unsw_nb15_dataset.dtypes[nf]:
+            output_values[nf] = round(output_values[nf])
+        current_numeric_index += 1
+
     
     return output_values
 
@@ -185,42 +240,40 @@ def decode_feature_sequence_tensor(unsw_nb15_dataset, sequence_tensor):
         
     return seq_out
 
-def test_cases():
-    #check that the dataframe is loaded correctly per some pre-determined values
-    #this is old, can probz get rid
-    #data_path = "UNSW-NB15_1_clean.csv"
-    #features_path = "UNSW-NB15_features.csv"
-    #packet_df, features_df = load_unsw_nb15_dataset_as_data_frame(data_path, features_path)
-    #assert (packet_df is not None), "Couldn't load packet dataset"
-    #assert (features_df is not None), "Couldn't load features list"
 
+
+def test_cases():
     #test one-hot function
     assert get_one_hot(2, 5) == [0.0, 0.0, 1.0, 0.0, 0.0]
 
-    data_set = unsw_nb15_dataset.UNSW_NB15(['/home/jaywalker/MachineLearning/PacketGAN/UNSW-NB15_1_clean.csv'],
-                                       sequence_length=1)
+    #data_set = unsw_nb15_dataset.UNSW_NB15('/home/jaywalker/MachineLearning/PacketGAN/UNSW-NB15_1_clean.csv',
+    #                                   sequence_length=1)
 
     #print("Original data item:")
-    data_item = data_set[99][0]
+    #data_item = data_set[99][0]
     #print(data_item)
-    #print("Encoded and then decoded data item:")
-    encoded = build_input_feature_tensor(data_set, data_item)
-    decoded = decode_feature_tensor(data_set, encoded)
-    #print(decoded)
-    for k in decoded:
-        assert data_item[k] == decoded[k],"Value prior to encoding does not match decoded value."
+    #encoded = build_input_feature_tensor(data_set, data_item)
+    #decoded = decode_feature_tensor(data_set, encoded)
+    #print("Decoded data item:\n ", decoded)
+    #for k in decoded:
+    #    assert data_item[k] == decoded[k],"Value prior to encoding does not match decoded value."
+    #The above assertions are encapsulated below:
 
-    data_set = unsw_nb15_dataset.UNSW_NB15(['/home/jaywalker/MachineLearning/PacketGAN/UNSW-NB15_1_clean.csv'],
+    data_set = unsw_nb15_dataset.UNSW_NB15('UNSW_NB15_full_clean.csv',
                                        sequence_length=5)
 
     #ensure tensor encoding and decoded is working correctly
     data_item = data_set[0]
     encoded_feature_sequence_tensor = build_feature_sequence_tensor(data_set, data_item)
+    #print("Encoded feature tensor shape: ", encoded_feature_sequence_tensor.shape)
+    #print("Encoded feature sequence tensor: ", encoded_feature_sequence_tensor)
     decoded_feature_sequence_tensor = decode_feature_sequence_tensor(data_set, encoded_feature_sequence_tensor)
     for t in range(0, len(decoded_feature_sequence_tensor)):
         for k in decoded_feature_sequence_tensor[t]:
-            assert data_item[t][k] == decoded_feature_sequence_tensor[t][k],"Value prior to encoding does not match decoded value."
-
+            if type(data_item[t][k]) in [float, np.float32, np.float64]:
+                assert math.isclose(data_item[t][k], decoded_feature_sequence_tensor[t][k], abs_tol=0.01),"Value " + str(data_item[t][k]) + " != " + str(decoded_feature_sequence_tensor[t][k])
+            else: #TODO need to check if integers are close enough 
+                assert data_item[t][k] == decoded_feature_sequence_tensor[t][k],"Value " + str(data_item[t][k]) + " != " + str(decoded_feature_sequence_tensor[t][k]) + " type: " + str(type(data_item[t][k]))
 
 
 if __name__ == "__main__":
