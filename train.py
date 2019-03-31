@@ -5,6 +5,7 @@ import torch
 import torch.optim as optim 
 import torch.nn as nn
 import benchmark_timer
+import networks
 from log_stats import LogStats
 
 #Returns a binary vector that determines whether a particular packet 
@@ -46,7 +47,7 @@ def extract(v):
     return v.data.storage().tolist()
 
 #well OK let's train the GAN on a single sequence and see what happens
-def train(G, D, data_loader, num_epochs):
+def train_gan(G, D, data_loader, num_epochs):
     epoch_timer = benchmark_timer.BenchmarkTimer()
     num_epochs = num_epochs
     print_interval = 1
@@ -158,6 +159,7 @@ def train(G, D, data_loader, num_epochs):
                 print("Remaining time: " + epoch_timer.seconds_to_readable_time(remaining_seconds))
             
     return G, D, generator_losses, discriminator_fake_losses, g_stats, df_stats
+
 
 def test_cases():
     ones_batch = torch.ones(4, 5, 3)

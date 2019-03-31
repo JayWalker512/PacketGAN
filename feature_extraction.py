@@ -241,6 +241,23 @@ def decode_feature_sequence_tensor(unsw_nb15_dataset, sequence_tensor):
     return seq_out
 
 
+#Takes a list of tensors of shape (sequence_length, num_features) and returns a tensor
+#with a batch dimension applied such that the new shape is (batch_size, sequence_length, num_features)
+#where batch_size is determined by the length of the original list.
+def batchify(input_set):
+    batch_size = len(input_set)
+    sequence_length = input_set[0].shape[0]
+    num_features = input_set[0].shape[1]
+    for l in input_set:
+        assert l.shape[0] == sequence_length,"Not all sequences of the same length!"
+        assert l.shape[1] == num_features,"Found sequence with differing number of features!"
+
+    new_tensor = torch.zeros(batch_size, sequence_length, num_features)
+    for i in range(0, len(input_set)):
+        new_tensor[i, :, :] = input_set[i][:, :]
+
+    return new_tensor
+
 
 def test_cases():
     #test one-hot function
@@ -259,6 +276,18 @@ def test_cases():
     #    assert data_item[k] == decoded[k],"Value prior to encoding does not match decoded value."
     #The above assertions are encapsulated below:
 
+
+
+    #test batchify function
+    seq1 = torch.ones(3,5)
+    seq2 = torch.zeros(3,5)
+    seq_batch = batchify([seq1, seq2])
+    print(seq_batch.shape)
+    print(seq_batch)
+    #TODO add assertions to check this
+
+
+
     data_set = unsw_nb15_dataset.UNSW_NB15('UNSW_NB15_full_clean.csv',
                                        sequence_length=5)
 
@@ -274,6 +303,7 @@ def test_cases():
                 assert math.isclose(data_item[t][k], decoded_feature_sequence_tensor[t][k], abs_tol=0.01),"Value " + str(data_item[t][k]) + " != " + str(decoded_feature_sequence_tensor[t][k])
             else: #TODO need to check if integers are close enough 
                 assert data_item[t][k] == decoded_feature_sequence_tensor[t][k],"Value " + str(data_item[t][k]) + " != " + str(decoded_feature_sequence_tensor[t][k]) + " type: " + str(type(data_item[t][k]))
+
 
 
 if __name__ == "__main__":
