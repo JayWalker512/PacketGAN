@@ -72,6 +72,12 @@ def train_gan(G, D, data_loader, num_epochs):
     df_stats = LogStats()
     
     criterion = nn.BCELoss() #right now the output is binary so this makes sense
+    #TODO FIXME Discriminator should use CrossEntropy loss,
+    #Generator should use something else. This decision is not as clear.
+    d_criterion = nn.CrossEntropyLoss()
+    #g_criterion = log(1-D(G(z))) #default loss function in GAN paper but suffers from vanishing gradient
+    #though paper says to maximize log(D(G(z))) which would be same as min 1/log(D(G(z)))
+
     discriminator_optimizer = optim.SGD(D.parameters(), lr=discriminator_learning_rate, momentum=sgd_momentum)
     generator_optimizer = optim.SGD(G.parameters(), lr=discriminator_learning_rate, momentum=sgd_momentum)
     print("Training has started...")

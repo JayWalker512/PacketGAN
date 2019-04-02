@@ -6,6 +6,8 @@ import torch.optim as optim
 import torch.nn as nn
 import numpy as np
 import matplotlib.pyplot as plt
+import math
+import networks
 from sklearn.cluster import KMeans
 
 
@@ -62,6 +64,89 @@ def clusterAndCompare(kmeans, train_set, test_set, retrain = True):
     plt.show()
 
     return train_counts, test_counts
+
+#This function calculates the "Wasserstein Critic" metric described in the paper titled 
+#"Pros and cons of GAN evaluation measures". This is an approximation to the Wasserstein Distance
+#since that cannot be directly computed in this case. The value of this metric is that
+#it addresses both overfitting and mode collapse. A value close to 0 is good, as it means
+#the critic cannot distinguish between real and fake samples. A value close to 1 is bad,
+#as it means they are easily distinguishable.
+#
+#This method expects an array/list/DataSet of examples where each example has shape
+#(batch_size, sequence_length, num_features).
+#
+#This implementation expects sequences. The algorithm in general can work on any data
+#(not just sequential) but this implementation maps sequences into a lower dimensional 
+#latent space that is not required for non-sequential data.
+#
+#returns a tuple of (wasserstein distance, classification accuracy)
+def wasserstein_critic(real_train_set, real_test_set, fake_train_set, fake_test_set):
+    
+    #First validate that all the data provided are compatible for this test...
+    batch_size = real_train_set[0].shape[0]
+    sequence_length = real_train_set[0].shape[1]
+    num_features = real_train_set[0].shape[2]
+    for s in [real_test_set, fake_train_set, fake_test_set]:
+        for e in s:
+            assert e.shape[0] == batch_size,"Batch size mismatch."
+            assert e.shape[1] == sequence_length,"Sequence length mismatch."
+            assert e.shape[2] == num_features,"Feature shape mismatch."
+
+    #train set lengths should match each other, but don't need to be same as test sets
+    #though they should match themselves as well.
+    assert len(real_train_set) == len(fake_train_set),"Training sets of unequal length."
+    assert len(real_test_set) == len(fake_test_set),"Testing sets of unequal length."
+
+    latent_size = math.ceil(num_features / 10) #ensure it's at least 1-dimensional
+    lsm = networks.GRUMapping(num_features, latent_size)
+    clf = networks.NeuralClassifier(latent_size, 1) #outputs binary classification
+    criterion = nn.MSELoss()
+    optimizer = optim.SGD(clf.parameters(), lr=0.1)
+
+    #Train the classifier for... one epoch? Maybe this is enough? Don't want to overfit...
+    #Really it depends on how many examples there are and a lot of other factors, so this
+    #is a bit of a "magic number"...
+
+    #Let's make it so the number of training steps is always at least 2500
+    #regardless of how many training examples there are.
+    #this should be enough to see meaningful progress.
+    c = 2500
+    n_examples = len(real_train_set)
+    n_epochs = math.ceil(c/n_examples) 
+    for e in range(0, n_epochs):
+        for i in range(0, n_examples):
+            clf.zero_grad()
+            prediction = clf(lsm(real_train_set[i]).detach())
+            loss = criterion(prediction, torch.ones(1))
+            loss.backward()
+            optimizer.step()
+            
+            clf.zero_grad()
+            prediction = clf(lsm(fake_train_set[i]).detach())
+            loss = criterion(prediction, torch.zeros(1))
+            loss.backward()
+            optimizer.step()
+
+    real_classification_sum = 0
+    fake_classification_sum = 0
+    N = len(real_test_set) #N is length of EACH set
+    n_correct = 0
+    for i in range(0, len(real_test_set)):
+        with torch.no_grad(): #Don't need to backpropogate
+            prediction = clf(lsm(real_test_set[i])).item()
+            real_classification_sum += prediction
+            if prediction >= 0.5:
+                n_correct += 1
+
+            prediction = clf(lsm(fake_test_set[i])).item()
+            fake_classification_sum += prediction
+            if prediction < 0.5:
+                n_correct += 1
+    
+    w_hat = ((1.0/N)*real_classification_sum) - ((1.0/N)*fake_classification_sum)
+    return w_hat, (n_correct/(N*2))
+
+
 
 
 def test_cases():
