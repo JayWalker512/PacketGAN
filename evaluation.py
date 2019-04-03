@@ -81,7 +81,12 @@ def clusterAndCompare(kmeans, train_set, test_set, retrain = True):
 #
 #returns a tuple of (wasserstein distance, classification accuracy)
 def wasserstein_critic(real_train_set, real_test_set, fake_train_set, fake_test_set):
-    
+    #TODO FIXME weights in classifier need to be clipped to some fixed value
+    #so that it has a maximum derivative (lipschitz continuous function).
+
+    #TODO only need real_set and fake_set as inputs. 
+    #Can do the test set splitting inside this function.
+
     #First validate that all the data provided are compatible for this test...
     batch_size = real_train_set[0].shape[0]
     sequence_length = real_train_set[0].shape[1]
