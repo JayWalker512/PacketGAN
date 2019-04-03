@@ -46,6 +46,9 @@ def get_interleaved_sequence_by_mask(first_sequence, second_sequence, mask):
 def extract(v):
     return v.data.storage().tolist()
 
+def GeneratorLoss(inputs, targets):
+    return torch.log(1-inputs).sum() #inputs should be the discriminators decision
+
 #well OK let's train the GAN on a single sequence and see what happens
 def train_gan(G, D, data_loader, num_epochs):
     epoch_timer = benchmark_timer.BenchmarkTimer()
@@ -71,10 +74,11 @@ def train_gan(G, D, data_loader, num_epochs):
     g_stats = LogStats() 
     df_stats = LogStats()
     
-    criterion = nn.BCELoss() #right now the output is binary so this makes sense
+    #criterion = nn.BCELoss() #right now the output is binary so this makes sense
     #TODO FIXME Discriminator should use CrossEntropy loss,
     #Generator should use something else. This decision is not as clear.
-    d_criterion = nn.CrossEntropyLoss()
+    d_criterion = nn.BCELoss()
+    g_criterion = GeneratorLoss
     #g_criterion = log(1-D(G(z))) #default loss function in GAN paper but suffers from vanishing gradient
     #though paper says to maximize log(D(G(z))) which would be same as min 1/log(D(G(z)))
 
@@ -97,7 +101,7 @@ def train_gan(G, D, data_loader, num_epochs):
                 #Train D on the real samples
                 #print("Sequence length: ", data_sample.shape[1] )
                 discriminator_decision_r = D(data_sample)
-                discriminator_real_error = criterion(discriminator_decision_r, torch.ones(data_sample.shape[0], data_sample.shape[1], 1))
+                discriminator_real_error = d_criterion(discriminator_decision_r, torch.ones(data_sample.shape[0], data_sample.shape[1], 1))
                 discriminator_real_error.backward()
                 
                 #Train D on the fake samples
@@ -112,7 +116,7 @@ def train_gan(G, D, data_loader, num_epochs):
                 
 
                 discriminator_decision_f = D(fake_masked_data)
-                discriminator_fake_error = criterion(discriminator_decision_f, torch.zeros(data_sample.shape[0], data_sample.shape[1], 1))
+                discriminator_fake_error = d_criterion(discriminator_decision_f, torch.zeros(data_sample.shape[0], data_sample.shape[1], 1))
                 discriminator_fake_error.backward()
                 discriminator_optimizer.step() # Only optimizes D's parameters; changes based on stored gradients from backward()
                 
@@ -133,8 +137,8 @@ def train_gan(G, D, data_loader, num_epochs):
                 fake_masked_data = get_interleaved_sequence_by_mask(generator_input_sequence, fake_data, get_mask_vector(data_sample.shape[1], eta))
                 
                 discriminator_decision_dg = D(fake_masked_data)
-                generator_error = criterion(discriminator_decision_dg, torch.ones(data_sample.shape[0], data_sample.shape[1], 1)) # Train G to pretend it's genuine
-            
+                generator_error = g_criterion(discriminator_decision_dg, torch.ones(data_sample.shape[0], data_sample.shape[1], 1))
+                
                 generator_error.backward()
                 generator_optimizer.step() # Only optimizes G's parameters
                 
