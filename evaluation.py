@@ -4,6 +4,8 @@ import random
 import torch
 import torch.optim as optim 
 import torch.nn as nn
+import torch.utils.data
+import warnings
 import numpy as np
 import matplotlib.pyplot as plt
 import math
@@ -80,27 +82,26 @@ def clusterAndCompare(kmeans, train_set, test_set, retrain = True):
 #latent space that is not required for non-sequential data.
 #
 #returns a tuple of (wasserstein distance, classification accuracy)
-def wasserstein_critic(real_train_set, real_test_set, fake_train_set, fake_test_set):
-    #TODO FIXME weights in classifier need to be clipped to some fixed value
-    #so that it has a maximum derivative (lipschitz continuous function).
-
-    #TODO only need real_set and fake_set as inputs. 
-    #Can do the test set splitting inside this function.
-
+def wasserstein_critic(real_set, fake_set):
     #First validate that all the data provided are compatible for this test...
-    batch_size = real_train_set[0].shape[0]
-    sequence_length = real_train_set[0].shape[1]
-    num_features = real_train_set[0].shape[2]
-    for s in [real_test_set, fake_train_set, fake_test_set]:
-        for e in s:
-            assert e.shape[0] == batch_size,"Batch size mismatch."
-            assert e.shape[1] == sequence_length,"Sequence length mismatch."
-            assert e.shape[2] == num_features,"Feature shape mismatch."
+    batch_size = real_set[0].shape[0]
+    sequence_length = real_set[0].shape[1]
+    num_features = real_set[0].shape[2]
+    for e in fake_set:
+        assert e.shape[0] == batch_size,"Batch size mismatch."
+        assert e.shape[1] == sequence_length,"Sequence length mismatch."
+        assert e.shape[2] == num_features,"Feature shape mismatch."
 
     #train set lengths should match each other, but don't need to be same as test sets
     #though they should match themselves as well.
-    assert len(real_train_set) == len(fake_train_set),"Training sets of unequal length."
-    assert len(real_test_set) == len(fake_test_set),"Testing sets of unequal length."
+    assert len(real_set) == len(fake_set),"Datasets of unequal length."
+    if (len(real_set) < 1000):
+        warnings.warn("It is recommended to use a dataset of at least 1000 elements to decrease score variance.", stacklevel=2)
+
+    test_size = len(real_set) // 3 #33% test size
+    train_size = len(real_set) - test_size
+    real_train_set, real_test_set = torch.utils.data.random_split(real_set, [train_size, test_size])
+    fake_train_set, fake_test_set = torch.utils.data.random_split(fake_set, [train_size, test_size])
 
     latent_size = math.ceil(num_features / 10) #ensure it's at least 1-dimensional
     lsm = networks.GRUMapping(num_features, latent_size)
@@ -123,12 +124,14 @@ def wasserstein_critic(real_train_set, real_test_set, fake_train_set, fake_test_
             clf.zero_grad()
             prediction = clf(lsm(real_train_set[i]).detach())
             loss = criterion(prediction, torch.ones(1))
+            loss.register_hook(lambda grad: torch.clamp(grad, min=-5, max=5))
             loss.backward()
             optimizer.step()
             
             clf.zero_grad()
             prediction = clf(lsm(fake_train_set[i]).detach())
             loss = criterion(prediction, torch.zeros(1))
+            loss.register_hook(lambda grad: torch.clamp(grad, min=-5, max=5))
             loss.backward()
             optimizer.step()
 
@@ -150,7 +153,6 @@ def wasserstein_critic(real_train_set, real_test_set, fake_train_set, fake_test_
     
     w_hat = ((1.0/N)*real_classification_sum) - ((1.0/N)*fake_classification_sum)
     return w_hat, (n_correct/(N*2))
-
 
 
 
