@@ -151,8 +151,10 @@ def train_gan(G, D, data_loader, num_epochs):
 
                 dre = extract(discriminator_real_error)[0]
                 dfe = extract(discriminator_fake_error)[0]
-                discriminator_fake_losses.append(dfe)
-                df_stats.log_data(extract(discriminator_error)[0])
+            
+            #This needs to be outside the loop to ensure the discriminator/generator loss lengths match
+            discriminator_fake_losses.append(dfe)
+            df_stats.log_data(extract(discriminator_error)[0])
 
             for generator_step in range(generator_training_steps):
                 #Train G on D's response (but DO NOT train D on these labels)
@@ -173,8 +175,13 @@ def train_gan(G, D, data_loader, num_epochs):
                 generator_optimizer.step() # Only optimizes G's parameters
                 
                 ge = extract(generator_error)[0]
-                generator_losses.append(ge)
-                g_stats.log_data(ge)
+
+            #This needs to be outside the loop to ensure the discriminator/generator loss lengths match
+            generator_losses.append(ge)
+            g_stats.log_data(ge)
+
+
+
 
             sample_count += 1
             progress.update(sample_count).draw()
@@ -188,9 +195,6 @@ def train_gan(G, D, data_loader, num_epochs):
             seconds_per_example = data_timer.get_elapsed_seconds()
             remaining_seconds = seconds_per_example * (progress.total_elements - sample_count) 
             print("Remaining time: " + data_timer.seconds_to_readable_time(remaining_seconds))
-            if sample_count % loss_log_interval == 0:
-                discriminator_fake_losses.append(dfe)
-                generator_losses.append(ge)
                 
           
         #calc average loss for every epoch
