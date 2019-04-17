@@ -22,15 +22,17 @@ class KMeansTorch(KMeans):
             KMeans.fit(self, X.numpy())
             return
         
+        #Otherwise, we assume it's a numpy array
         KMeans.fit(self, X)
 
     def predict(self, X):
         if isinstance(X, torch.Tensor):
             return KMeans.predict(self, X.numpy())
         
+        #Otherwise we assume it's a numpy array
         return KMeans.predict(self, X)
 
-def getDictOfLabelCounts(labels):
+def get_dict_of_label_counts(labels):
     labels_counts = {}
     for l in labels:
         if l not in labels_counts:
@@ -42,19 +44,43 @@ def getDictOfLabelCounts(labels):
 
 #Need a function that will fit KMeans to a training set, then predict on the test set
 #and print bar charts comparing them
-def clusterAndCompare(kmeans, train_set, test_set, retrain = True):
+def cluster_and_compare(kmeans, train_set, test_set, retrain = True):
+    
+    #If the examples are batched, we need to un-batch them for kmeans to use them.
+    #ie, we get a list with shape like so: [ [64, 100], [64, 100] ]
+    #we need to unpack it to [ [100], [100], [100], ..., [100] ]
+    #We're also assuming the input is a list of torch.Tensors, so this would need modification for numpy input.
+    #print(train_set_in[0].dim())
+
+    #train_set = []
+    #if train_set_in[0].dim() >= 2: #then we need to un-batch. Assuming everything is batched if the first element is.
+    #    for batch in train_set_in:
+    #        for elem in batch:
+    #            train_set.append(elem)
+    #else:
+    #    train_set = train_set_in
+
+    #print(train_set[0].dim())
+
+    #if test_set_in[0].dim() >= 2: #then we need to un-batch. Assuming everything is batched if the first element is.
+    #    for batch in test_set_in:
+    #        for elem in batch:
+    #            test_set.append(elem)
+    #else:
+    #    test_set = test_set_in
+
+
     if retrain:
         kmeans.fit(train_set)
 
     train_labels = kmeans.labels_
     test_labels = kmeans.predict(test_set)
-    train_counts = getDictOfLabelCounts(train_labels)
-    test_counts = getDictOfLabelCounts(test_labels)
+    train_counts = get_dict_of_label_counts(train_labels)
+    test_counts = get_dict_of_label_counts(test_labels)
 
     n_clusters = len(kmeans.cluster_centers_)
     sorted_train_labels = [l for l in range(0, n_clusters)]
-    sorted_train_counts = [train_counts[l] for l in sorted_train_labels]
-    
+    sorted_train_counts = [train_counts[l] for l in sorted_train_labels]    
     sorted_test_labels = sorted(test_counts.keys())
     sorted_test_counts = [test_counts[l] for l in sorted_test_labels]
     

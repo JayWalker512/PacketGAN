@@ -47,15 +47,35 @@ def get_interleaved_sequence_by_mask(first_sequence, second_sequence, mask):
 def extract(v):
     return v.data.storage().tolist()
 
-#Currently not used, don't seem to work as desired...
-def GeneratorLoss(inputs, targets):
-    return -torch.log(inputs.sum()) #possibly better?
-    #return torch.log(1-inputs).sum() #inputs should be the discriminators decision
+#Generator loss for WGAN GP
+def GeneratorLoss(df_decision):
+    return -torch.mean(df_decision) 
 
-def DiscriminatorLoss(dr_decision, df_decision):
-    #we are asked to ascend this gradient, hence the negative to make it descent
-    #in this function the loss is combined, so I guess we only need to backwards once?
-    return -(torch.log(dr_decision) + torch.log(1 - df_decision)).sum()
+#Discriminator/"Critic" loss for WGAN GP
+def DiscriminatorLoss(dr_decision, df_decision, gradient_penalty, lambda_gp=10):
+    return -torch.mean(dr_decision) + torch.mean(df_decision) + lambda_gp * gradient_penalty
+
+#This code should be updated to PyTorch 1.0 idioms, some of this is deprecated/unnecessary
+def compute_gradient_penalty(D, real_samples, fake_samples):
+    """Calculates the gradient penalty loss for WGAN GP"""
+    # Random weight term for interpolation between real and fake samples
+    alpha = Tensor(np.random.random((real_samples.size(0), 1, 1, 1)))
+    # Get random interpolation between real and fake samples
+    interpolates = (alpha * real_samples + ((1 - alpha) * fake_samples)).requires_grad_(True)
+    d_interpolates = D(interpolates)
+    fake = Variable(Tensor(real_samples.shape[0], 1).fill_(1.0), requires_grad=False)
+    # Get gradient w.r.t. interpolates
+    gradients = autograd.grad(
+        outputs=d_interpolates,
+        inputs=interpolates,
+        grad_outputs=fake,
+        create_graph=True,
+        retain_graph=True,
+        only_inputs=True,
+    )[0]
+    gradients = gradients.view(gradients.size(0), -1)
+    gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean()
+    return gradient_penalty
 
 #well OK let's train the GAN on a single sequence and see what happens
 def train_gan(G, D, data_loader, num_epochs):
@@ -85,8 +105,6 @@ def train_gan(G, D, data_loader, num_epochs):
     criterion = nn.BCELoss() 
     #d_criterion = DiscriminatorLoss
     #g_criterion = GeneratorLoss
-    #g_criterion = log(1-D(G(z))) #default loss function in GAN paper but suffers from vanishing gradient
-    #though paper says to maximize log(D(G(z))) which would be same as min 1/log(D(G(z)))
 
     discriminator_optimizer = optim.SGD(D.parameters(), lr=discriminator_learning_rate, momentum=sgd_momentum)
     generator_optimizer = optim.SGD(G.parameters(), lr=discriminator_learning_rate, momentum=sgd_momentum)
@@ -99,37 +117,6 @@ def train_gan(G, D, data_loader, num_epochs):
                 continue #skip these samples if the batch is the wrong size.
 
             for discriminator_step in range(discriminator_training_steps):
-                #D.init_hidden_state()
-                #D.zero_grad()
-                
-                #Train D on the real samples
-                #discriminator_decision_r = D(data_sample)
-                #discriminator_real_error = d_criterion(discriminator_decision_r, torch.ones(data_sample.shape[0], data_sample.shape[1], 1))
-                #discriminator_real_error.backward()
-                #discriminator_optimizer.step()
-                
-                #Train D on the fake samples
-                #D.init_hidden_state()
-                
-                #get a real example and mask some of them with generator output
-                #generator_input_sequence = data_sample
-                #with torch.no_grad():
-                #    fake_data = G(generator_input_sequence)#.detach()  # detach to avoid training G on these labels
-                
-                #TODO FIXME, is the masker behaving properly with the batch training?
-                #fake_masked_data = get_interleaved_sequence_by_mask(generator_input_sequence, fake_data, get_mask_vector(data_sample.shape[1], eta))
-                #fake_masked_data = fake_data
-
-                #discriminator_decision_f = D(fake_masked_data)
-                #discriminator_fake_error = d_criterion(discriminator_decision_f, torch.zeros(data_sample.shape[0], data_sample.shape[1], 1))
-                #discriminator_fake_error.backward()
-                #discriminator_optimizer.step() # Only optimizes D's parameters; changes based on stored gradients from backward()
-                
-                #dre = extract(discriminator_real_error)[0]
-                #dfe = extract(discriminator_fake_error)[0]
-                
-                #df_stats.log_data(dfe)
-        
                 D.init_hidden_state()
                 D.zero_grad()
 
@@ -165,10 +152,7 @@ def train_gan(G, D, data_loader, num_epochs):
                 
                 generator_input_sequence = data_sample
                 fake_data = G(generator_input_sequence)
-                fake_masked_data = fake_data
-                #fake_masked_data = get_interleaved_sequence_by_mask(generator_input_sequence, fake_data, get_mask_vector(data_sample.shape[1], eta))
-                
-                discriminator_decision_dg = D(fake_masked_data)
+                discriminator_decision_dg = D(fake_data)
                 generator_error = criterion(discriminator_decision_dg, torch.ones(data_sample.shape[0], data_sample.shape[1], 1))
                 
                 generator_error.backward()
@@ -179,9 +163,6 @@ def train_gan(G, D, data_loader, num_epochs):
             #This needs to be outside the loop to ensure the discriminator/generator loss lengths match
             generator_losses.append(ge)
             g_stats.log_data(ge)
-
-
-
 
             sample_count += 1
             progress.update(sample_count).draw()

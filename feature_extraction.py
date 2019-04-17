@@ -8,6 +8,19 @@ import os.path
 import unsw_nb15_dataset
 import math
 
+#Some settings related to the output from this file:
+
+#This is only defined in the scope of this file
+one_hot_categorical = False
+
+#TODO FIXME I should get this list from the unsw_nb15_dataset object in a reliably-ordered way
+numeric_features = ['dur', 'sbytes',
+       'dbytes', 'sttl', 'dttl', 'sloss', 'dloss', 'sload', 'dload',
+       'spkts', 'dpkts', 'swin', 'dwin', 'stcpb', 'dtcpb', 'smeansz',
+       'dmeansz', 'trans_depth', 'res_bdy_len', 'sjit', 'djit', 'stime',
+       'ltime', 'sintpkt', 'dintpkt', 'tcprtt', 'synack', 'ackdat']
+
+
 #Load a CSV from the UNSW-NB15 dataset into a Pandas DataFrame
 def load_unsw_nb15_dataset_as_data_frame(file_path = None, features_path = None):
     if file_path is None or features_path is None:
@@ -32,7 +45,7 @@ def load_unsw_nb15_dataset_as_data_frame(file_path = None, features_path = None)
 #One-hot or Binary encoding seems logical, using Binary coding to keep things compact.
 
 #Returns a list where each element are a 1 or 0, determining the binary encoding of value with
-#at least bits number of bits. If the value cannot be encoding with the requested number of bits,
+#at least bits number of bits. If the value cannot be encoded with the requested number of bits,
 #None will be returned.
 def binary_encode(value, bits):
     encoding = []
@@ -62,6 +75,9 @@ def binary_decode(value):
             
     return out
 
+#Converts a list/vector of floats in range [0,1] to a list/vetcor of integers 
+#equivalent to having rounded the floats to the nearest integer of 0, 1.
+#eg. vector [0.2, 0.7] becomes [0, 1]
 def float_to_binary(value):
     out = []
     for i in range(len(value)):
@@ -72,12 +88,17 @@ def float_to_binary(value):
             
     return out
 
+#Takes an integer "target" in the range [0, num_classes] and returns the one-hot 
+#encoding of that target as a vector of length num_classes where the value at index
+#target is 1.0 and all other values are 0.
 def get_one_hot(target, num_classes):
     one_hot = [0.0 for c in range(num_classes)]
     one_hot[target] = 1.0
     return one_hot
 
-
+#Takes a vector/list which is one-hot encoded and returns the index of the first value
+#which is 1.0 or 1. If there are other values which are non-zero, those are ignored.
+#If no value is set to 1.0 or 1, None is returned.
 def from_one_hot(one_hot):
     for c in range(0, len(one_hot)):
         if one_hot[c] == 1.0 or one_hot[c] == 1:
@@ -93,16 +114,6 @@ def get_minimum_bits(value):
         
     return min_bits
 
-
-#TODO FIXME is this only defined in the scope of the file? Not clear!
-one_hot_categorical = False
-
-#TODO FIXME I should get this list from the unsw_nb15_dataset object in a reliably-ordered way
-numeric_features = ['dur', 'sbytes',
-       'dbytes', 'sttl', 'dttl', 'sloss', 'dloss', 'sload', 'dload',
-       'spkts', 'dpkts', 'swin', 'dwin', 'stcpb', 'dtcpb', 'smeansz',
-       'dmeansz', 'trans_depth', 'res_bdy_len', 'sjit', 'djit', 'stime',
-       'ltime', 'sintpkt', 'dintpkt', 'tcprtt', 'synack', 'ackdat']
 
 def build_input_feature_tensor(unsw_nb15_dataset, packet_data_dict):
     input_features = []
@@ -268,7 +279,15 @@ def batchify(input_set):
 
 def test_cases():
     #test one-hot function
-    assert get_one_hot(2, 5) == [0.0, 0.0, 1.0, 0.0, 0.0]
+    assert get_one_hot(2, 5) == [0.0, 0.0, 1.0, 0.0, 0.0], "One-hot encoding was not correct."
+
+    assert from_one_hot([0,0,1,0,0]) == 2,"One-hot decoding was not correct."
+
+    assert float_to_binary([0.2, 0.7]) == [0, 1],"Float to binary result was not correct."
+
+    assert binary_encode(7, 4) == [0, 1, 1, 1],"Binary encoding was not correct."
+
+    assert binary_decode([0, 1, 1, 1]) == 7,"Binary decoding was not correct."
 
     #test batchify function
     seq1 = torch.ones(3,5)
