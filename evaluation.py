@@ -45,31 +45,6 @@ def get_dict_of_label_counts(labels):
 #Need a function that will fit KMeans to a training set, then predict on the test set
 #and print bar charts comparing them
 def cluster_and_compare(kmeans, train_set, test_set, retrain = True):
-    
-    #If the examples are batched, we need to un-batch them for kmeans to use them.
-    #ie, we get a list with shape like so: [ [64, 100], [64, 100] ]
-    #we need to unpack it to [ [100], [100], [100], ..., [100] ]
-    #We're also assuming the input is a list of torch.Tensors, so this would need modification for numpy input.
-    #print(train_set_in[0].dim())
-
-    #train_set = []
-    #if train_set_in[0].dim() >= 2: #then we need to un-batch. Assuming everything is batched if the first element is.
-    #    for batch in train_set_in:
-    #        for elem in batch:
-    #            train_set.append(elem)
-    #else:
-    #    train_set = train_set_in
-
-    #print(train_set[0].dim())
-
-    #if test_set_in[0].dim() >= 2: #then we need to un-batch. Assuming everything is batched if the first element is.
-    #    for batch in test_set_in:
-    #        for elem in batch:
-    #            test_set.append(elem)
-    #else:
-    #    test_set = test_set_in
-
-
     if retrain:
         kmeans.fit(train_set)
 
@@ -103,12 +78,15 @@ def cluster_and_compare(kmeans, train_set, test_set, retrain = True):
 #This method expects an array/list/DataSet of examples where each example has shape
 #(batch_size, sequence_length, num_features).
 #
+#If the batch_size is >1, the examples are reorganized to batches of size 1 such that
+#the critic is trained via stochastic gradient descent.
+#
 #This implementation expects sequences. The algorithm in general can work on any data
 #(not just sequential) but this implementation maps sequences into a lower dimensional 
 #latent space that is not required for non-sequential data.
 #
 #returns a tuple of (wasserstein distance, classification accuracy)
-def wasserstein_critic(real_set, fake_set):
+def wasserstein_critic(real_set, fake_set, latent_dimensions = None):
     #First validate that all the data provided are compatible for this test...
     batch_size = real_set[0].shape[0]
     sequence_length = real_set[0].shape[1]
@@ -118,8 +96,20 @@ def wasserstein_critic(real_set, fake_set):
         assert e.shape[1] == sequence_length,"Sequence length mismatch."
         assert e.shape[2] == num_features,"Feature shape mismatch."
 
-    #train set lengths should match each other, but don't need to be same as test sets
-    #though they should match themselves as well.
+    #If the batch dimension is not 1, we should unpack them to single-sequence batches
+    #so the rest of the code works nicely....
+    real_set_new = []
+    fake_set_new = []
+    if batch_size > 1:
+        for batch in real_set:
+            for sequence in batch:
+                real_set_new.append(torch.unsqueeze(sequence, 0))
+        for batch in fake_set:
+            for sequence in batch:
+                fake_set_new.append(torch.unsqueeze(sequence, 0))
+        real_set = real_set_new
+        fake_set = fake_set_new
+
     assert len(real_set) == len(fake_set),"Datasets of unequal length."
     if (len(real_set) < 1000):
         warnings.warn("It is recommended to use a dataset of at least 1000 elements to decrease score variance.", stacklevel=2)
@@ -129,8 +119,11 @@ def wasserstein_critic(real_set, fake_set):
     real_train_set, real_test_set = torch.utils.data.random_split(real_set, [train_size, test_size])
     fake_train_set, fake_test_set = torch.utils.data.random_split(fake_set, [train_size, test_size])
 
-    latent_size = math.ceil(num_features / 10) #ensure it's at least 1-dimensional
-    lsm = networks.GRUMapping(num_features, latent_size)
+    if latent_dimensions is not None:
+        latent_size = latent_dimensions
+    else:
+        latent_size = math.ceil(num_features / 10) #ensure it's at least 1-dimensional
+    lsm = networks.GRUMapping(num_features, latent_size, 1)
     clf = networks.NeuralClassifier(latent_size, 1) #outputs binary classification
     criterion = nn.MSELoss()
     optimizer = optim.SGD(clf.parameters(), lr=0.1)
@@ -150,7 +143,7 @@ def wasserstein_critic(real_set, fake_set):
             clf.zero_grad()
             prediction = clf(lsm(real_train_set[i]).detach())
             loss = criterion(prediction, torch.ones(1))
-            loss.register_hook(lambda grad: torch.clamp(grad, min=-5, max=5))
+            loss.register_hook(lambda grad: torch.clamp(grad, min=-5, max=5)) #What value to clamp to? Who knows!
             loss.backward()
             optimizer.step()
             

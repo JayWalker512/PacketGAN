@@ -4,6 +4,7 @@ import random
 import torch
 import torch.optim as optim 
 import torch.nn as nn
+import numpy as np
 import benchmark_timer
 import networks
 import progress_bar
@@ -52,18 +53,23 @@ def GeneratorLoss(df_decision):
     return -torch.mean(df_decision) 
 
 #Discriminator/"Critic" loss for WGAN GP
-def DiscriminatorLoss(dr_decision, df_decision, gradient_penalty, lambda_gp=10):
-    return -torch.mean(dr_decision) + torch.mean(df_decision) + lambda_gp * gradient_penalty
+def DiscriminatorLoss(dr_decision, df_decision): # gradient_penalty, lambda_gp=10):
+    return -torch.mean(dr_decision) + torch.mean(df_decision) #+ lambda_gp * gradient_penalty
 
 #This code should be updated to PyTorch 1.0 idioms, some of this is deprecated/unnecessary
+#Also not clear how to apply it for sequential data...
 def compute_gradient_penalty(D, real_samples, fake_samples):
     """Calculates the gradient penalty loss for WGAN GP"""
     # Random weight term for interpolation between real and fake samples
-    alpha = Tensor(np.random.random((real_samples.size(0), 1, 1, 1)))
+    alpha = torch.tensor(np.random.random((real_samples.size(0), 1, 1, 1)), dtype=torch.float32)
     # Get random interpolation between real and fake samples
+    #print("alpha type: ", alpha.dtype)
+    #print("real_samples type: ", real_samples.dtype)
+    #print("fake_samples type: ", fake_samples.dtype)
     interpolates = (alpha * real_samples + ((1 - alpha) * fake_samples)).requires_grad_(True)
+    #print(interpolates)
     d_interpolates = D(interpolates)
-    fake = Variable(Tensor(real_samples.shape[0], 1).fill_(1.0), requires_grad=False)
+    fake = Variable(torch.tensor(real_samples.shape[0], 1).fill_(1.0), requires_grad=False)
     # Get gradient w.r.t. interpolates
     gradients = autograd.grad(
         outputs=d_interpolates,
@@ -82,13 +88,12 @@ def train_gan(G, D, data_loader, num_epochs):
     data_timer = benchmark_timer.BenchmarkTimer()
     num_epochs = num_epochs
     print_interval = 1
-    loss_log_interval = 100
     sample_count = 0 #count samples up to loss_log_interval then log instantaneous loss
     print_stats = True
     eta = 0.2 #probability of masking an element of a sequence
     
-    discriminator_learning_rate = 1e-3
-    generator_learning_rate = 1e-3
+    discriminator_learning_rate = 5e-5
+    generator_learning_rate = 5e-5
     sgd_momentum = 0.9
     
     discriminator_training_steps = 5
@@ -101,15 +106,13 @@ def train_gan(G, D, data_loader, num_epochs):
     discriminator_fake_losses = []
     g_stats = LogStats() 
     df_stats = LogStats()
-    
-    criterion = nn.BCELoss() 
-    #d_criterion = DiscriminatorLoss
-    #g_criterion = GeneratorLoss
 
-    discriminator_optimizer = optim.SGD(D.parameters(), lr=discriminator_learning_rate, momentum=sgd_momentum)
-    generator_optimizer = optim.SGD(G.parameters(), lr=discriminator_learning_rate, momentum=sgd_momentum)
+    #discriminator_optimizer = optim.SGD(D.parameters(), lr=discriminator_learning_rate, momentum=sgd_momentum)
+    #generator_optimizer = optim.SGD(G.parameters(), lr=discriminator_learning_rate, momentum=sgd_momentum)
+    discriminator_optimizer = optim.RMSprop(D.parameters(), lr=discriminator_learning_rate)
+    generator_optimizer = optim.RMSprop(G.parameters(), lr=generator_learning_rate)
     print("Training has started...")
-    progress = progress_bar.ProgressBar(total_elements=num_epochs * len(data_loader.dataset), bar_length=30, title="Training")
+    progress = progress_bar.ProgressBar(total_elements=num_epochs * len(data_loader), bar_length=30, title="Training")
     for epoch in range(num_epochs):
         for data_sample in data_loader:
             data_timer.start()
@@ -124,24 +127,27 @@ def train_gan(G, D, data_loader, num_epochs):
                 discriminator_decision_r = D(data_sample)
 
                 with torch.no_grad():
-                    fake_data = G(data_sample)#.detach()  # detach to avoid training G on these labels
+                    fake_data = G(data_sample) # no_grad to avoid training G on these labels
                 
                 #get discriminator fake decision
                 D.init_hidden_state()
                 discriminator_decision_f = D(fake_data)
 
-                discriminator_real_error = criterion(discriminator_decision_r, torch.ones(data_sample.shape[0], data_sample.shape[1], 1))
-                discriminator_fake_error = criterion(discriminator_decision_f, torch.zeros(data_sample.shape[0], data_sample.shape[1], 1))
-                discriminator_error = (discriminator_real_error + discriminator_fake_error) / 2
-                discriminator_error.backward()
+                #calculate loss
+                #gradient_penalty = compute_gradient_penalty(D, data_sample, fake_data)
+                d_loss = DiscriminatorLoss(discriminator_decision_r, discriminator_decision_f)
+                d_loss.backward()
                 discriminator_optimizer.step()
 
-                dre = extract(discriminator_real_error)[0]
-                dfe = extract(discriminator_fake_error)[0]
+                for p in D.parameters():
+                    p.data.clamp_(-0.01, 0.01) #this is the clipping parameter
+
+                dre = extract(d_loss)[0]
+                dfe = extract(d_loss)[0]
             
             #This needs to be outside the loop to ensure the discriminator/generator loss lengths match
             discriminator_fake_losses.append(dfe)
-            df_stats.log_data(extract(discriminator_error)[0])
+            df_stats.log_data(extract(d_loss)[0])
 
             for generator_step in range(generator_training_steps):
                 #Train G on D's response (but DO NOT train D on these labels)
@@ -150,15 +156,13 @@ def train_gan(G, D, data_loader, num_epochs):
                 D.init_hidden_state()
                 D.zero_grad()
                 
-                generator_input_sequence = data_sample
-                fake_data = G(generator_input_sequence)
+                fake_data = G(data_sample)
                 discriminator_decision_dg = D(fake_data)
-                generator_error = criterion(discriminator_decision_dg, torch.ones(data_sample.shape[0], data_sample.shape[1], 1))
-                
-                generator_error.backward()
+                g_loss = GeneratorLoss(discriminator_decision_dg)
+                g_loss.backward()
                 generator_optimizer.step() # Only optimizes G's parameters
                 
-                ge = extract(generator_error)[0]
+                ge = extract(g_loss)[0]
 
             #This needs to be outside the loop to ensure the discriminator/generator loss lengths match
             generator_losses.append(ge)
