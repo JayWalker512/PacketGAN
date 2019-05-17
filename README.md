@@ -34,3 +34,32 @@ The code in this repository provides a PyTorch dataset class and functions for l
 into an ML-useful form. You may need to do some data cleaning on the UNSW-NB15 data files prior
 to using them, some of the port numbers were stored in hexadecimal which my code is not written 
 to handle, since the vast majority of the data is stored as base-10 digits.
+
+What files to use?
+------------------
+
+There are several Jupyter Notebooks in this repository. Some of them are relevant/up to date and some should probably be deleted. The plain .py Python files contain logic that is used by various Jupyter Notebooks, so that the notebooks don't become overly bloated with details. 
+
+*PacketGAN.ipynb* : The meat-and-potatoes of this project. This file loads the dataset, trains the GAN, and runs evaluation metrics. 
+
+*WaveGAN.ipynb* : A proof-of-concept notebook to show that a GAN can be built to generate sequential data, and validate the evaluation metrics.
+
+*PyTorch_GAN_Tutorial_from_Medium.ipynb* : What it sounds like. A basic GAN tutorial showing that a normal distribution can be learned from a uniform distribution by adversarial training. 
+
+*Latent Space Classifier.ipynb* : Attempting to validate methods for mapping sequential data into a latent vector space for classification and evaluation metric generation. 
+
+*networks.py* : Contains definitions of various neural networks used throughout the project.
+
+*feature_extraction.py* : Mapping UNSW-NB15 packet features into a form that can be used as input/output with a neural network.
+
+*evaluation.py* : Various functions for calculating evaluation metrics.
+
+*train.py* : Contains the GAN training loop used by PacketGAN and WaveGAN.
+
+*benchmark_timer.py* : A basic timer for calculating elapsed time.
+
+*progress_bar.py* : Render a progress bar in Jupyter Notebooks.
+
+*log_stats.py* : Tools for accumulating/logging statistics such as averages on various tasks.
+
+*unsw_nb15_dataset.py* : Pytorch Dataset class for loading the UNSW-NB15 dataset.
