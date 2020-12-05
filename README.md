@@ -63,3 +63,8 @@ There are several Jupyter Notebooks in this repository. Some of them are relevan
 *log_stats.py* : Tools for accumulating/logging statistics such as averages on various tasks.
 
 *unsw_nb15_dataset.py* : Pytorch Dataset class for loading the UNSW-NB15 dataset.
+
+License
+-------
+
+This work is licensed under the MIT license, see LICENSE.txt for more information.
